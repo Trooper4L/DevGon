@@ -8,110 +8,126 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { collection, query, orderBy, getDocs, doc, updateDoc, increment } from "firebase/firestore"
+import { collection, query, where, getDocs, doc, updateDoc, increment } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import type { JobPosting } from "@/lib/types"
 import { Search, Heart, Eye, Calendar, MessageSquare, Users, Briefcase } from "lucide-react"
 import Link from "next/link"
 
-export default function EmployerDashboard() {
+export default function DeveloperListings() {
   const { user, userProfile, loading: authLoading } = useAuth()
   const router = useRouter()
-  const [jobPostings, setJobPostings] = useState<JobPosting[]>([])
-  const [filteredPostings, setFilteredPostings] = useState<JobPosting[]>([])
-  const [loading, setLoading] = useState(true)
+  const [developerProfiles, setDeveloperProfiles] = useState<any[]>([])
+  const [filteredProfiles, setFilteredProfiles] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSkills, setSelectedSkills] = useState<string[]>([])
+  // Unified loading state
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/signin")
+    // Wait for auth to finish before doing anything
+    if (authLoading) {
+      return
     }
-    if (userProfile?.role !== "employer") {
+
+    // Redirect if not logged in
+    if (!user) {
+      router.push("/signin")
+      return
+    }
+
+    // Redirect if the role is wrong (and profile is loaded)
+    if (userProfile && userProfile.role !== "employer") {
       router.push("/developer/dashboard")
+      return
+    }
+
+    // If we have a user and their profile, load the data
+    if (user && userProfile) {
+      const loadDeveloperProfiles = async () => {
+        try {
+          const q = query(collection(db, "developerProfiles"))
+          const querySnapshot = await getDocs(q)
+          const profiles: any[] = []
+
+          querySnapshot.forEach((doc) => {
+            profiles.push({ ...doc.data(), id: doc.id })
+          })
+
+          setDeveloperProfiles(profiles)
+          setFilteredProfiles(profiles)
+        } catch (error) {
+          console.error("Error loading developer profiles:", error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      loadDeveloperProfiles()
     }
   }, [user, userProfile, authLoading, router])
 
   useEffect(() => {
-    loadJobPostings()
-  }, [])
+    const filterProfiles = () => {
+      let filtered = developerProfiles
 
-  useEffect(() => {
-    filterPostings()
-  }, [searchQuery, selectedSkills, jobPostings])
+      if (searchQuery.trim() !== "") {
+        filtered = filtered.filter(
+          (profile) =>
+            profile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            profile.bio.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            profile.title.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      }
 
-  const loadJobPostings = async () => {
+      if (selectedSkills.length > 0) {
+        filtered = filtered.filter((profile) => selectedSkills.some((skill) => profile.skills.includes(skill)))
+      }
+
+      setFilteredProfiles(filtered)
+    }
+
+    filterProfiles()
+  }, [searchQuery, selectedSkills, developerProfiles])
+
+  const handleViewProfile = async (profileId: string) => {
     try {
-      const q = query(collection(db, "jobPostings"), orderBy("createdAt", "desc"))
-      const querySnapshot = await getDocs(q)
-      const posts: JobPosting[] = []
-
-      querySnapshot.forEach((doc) => {
-        posts.push({ ...doc.data(), id: doc.id } as JobPosting)
-      })
-
-      setJobPostings(posts)
-      setFilteredPostings(posts)
-    } catch (error) {
-      console.error("Error loading job postings:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const filterPostings = () => {
-    let filtered = jobPostings
-
-    if (searchQuery.trim() !== "") {
-      filtered = filtered.filter(
-        (post) =>
-          post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          post.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          post.developerName.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    }
-
-    if (selectedSkills.length > 0) {
-      filtered = filtered.filter((post) => selectedSkills.some((skill) => post.skills.includes(skill)))
-    }
-
-    setFilteredPostings(filtered)
-  }
-
-  const handleViewPost = async (postId: string) => {
-    try {
-      const postRef = doc(db, "jobPostings", postId)
-      await updateDoc(postRef, {
+      const profileRef = doc(db, "developerProfiles", profileId)
+      await updateDoc(profileRef, {
         views: increment(1),
       })
 
-      setJobPostings((prev) => prev.map((post) => (post.id === postId ? { ...post, views: post.views + 1 } : post)))
+      setDeveloperProfiles((prev) =>
+        prev.map((profile) => (profile.id === profileId ? { ...profile, views: profile.views + 1 } : profile)),
+      )
     } catch (error) {
       console.error("Error updating views:", error)
     }
   }
 
-  const handleLike = async (postId: string) => {
+  const handleLikeProfile = async (profileId: string) => {
     if (!user) return
 
     try {
-      const postRef = doc(db, "jobPostings", postId)
-      await updateDoc(postRef, {
+      const profileRef = doc(db, "developerProfiles", profileId)
+      await updateDoc(profileRef, {
         likes: increment(1),
       })
 
-      setJobPostings((prev) => prev.map((post) => (post.id === postId ? { ...post, likes: post.likes + 1 } : post)))
+      setDeveloperProfiles((prev) =>
+        prev.map((profile) => (profile.id === profileId ? { ...profile, likes: profile.likes + 1 } : profile)),
+      )
     } catch (error) {
       console.error("Error liking post:", error)
     }
   }
 
-  const allSkills = Array.from(new Set(jobPostings.flatMap((post) => post.skills)))
+  const allSkills = Array.from(new Set(developerProfiles.flatMap((profile) => profile.skills)))
 
-  if (authLoading || loading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">Loading Dashboard...</div>
       </div>
     )
   }
@@ -133,7 +149,7 @@ export default function EmployerDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{jobPostings.length}</div>
+              <div className="text-2xl font-bold">{developerProfiles.length}</div>
               <p className="text-xs text-muted-foreground">Active portfolios</p>
             </CardContent>
           </Card>
@@ -203,11 +219,11 @@ export default function EmployerDashboard() {
           <CardHeader>
             <CardTitle>Developer Portfolios</CardTitle>
             <CardDescription>
-              Browse verified blockchain developers and their work ({filteredPostings.length} results)
+              Browse verified blockchain developers and their work ({filteredProfiles.length} results)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {filteredPostings.length === 0 ? (
+            {filteredProfiles.length === 0 ? (
               <div className="py-12 text-center">
                 <p className="text-muted-foreground">
                   {searchQuery || selectedSkills.length > 0
@@ -217,26 +233,26 @@ export default function EmployerDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredPostings.map((post) => (
+                {filteredProfiles.map((profile) => (
                   <div
-                    key={post.id}
+                    key={profile.id}
                     className="rounded-lg border border-border p-6 transition-colors hover:bg-accent/5"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex items-center gap-3">
-                          <h3 className="text-lg font-semibold">{post.title}</h3>
-                          {post.price && (
+                          <h3 className="text-lg font-semibold">{profile.title}</h3>
+                          {profile.rate && (
                             <Badge variant="secondary" className="text-xs">
-                              {post.price}
+                              ${profile.rate}/hr
                             </Badge>
                           )}
                         </div>
-                        <p className="mb-1 text-sm text-muted-foreground">by {post.developerName}</p>
-                        <p className="mb-4 text-sm text-foreground line-clamp-2">{post.description}</p>
+                        <p className="mb-1 text-sm text-muted-foreground">by {profile.name}</p>
+                        <p className="mb-4 text-sm text-foreground line-clamp-2">{profile.bio}</p>
 
                         <div className="mb-4 flex flex-wrap gap-2">
-                          {post.skills.map((skill) => (
+                          {profile.skills.map((skill: string) => (
                             <Badge key={skill} variant="outline" className="text-xs">
                               {skill}
                             </Badge>
@@ -245,31 +261,27 @@ export default function EmployerDashboard() {
 
                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(post.createdAt).toLocaleDateString()}
-                          </span>
-                          <span className="flex items-center gap-1">
                             <Eye className="h-3 w-3" />
-                            {post.views} views
+                            {profile.views || 0} views
                           </span>
                           <span className="flex items-center gap-1">
                             <Heart className="h-3 w-3" />
-                            {post.likes} likes
+                            {profile.likes || 0} likes
                           </span>
                         </div>
                       </div>
 
                       <div className="ml-6 flex flex-col gap-2">
-                        <Button size="sm" asChild onClick={() => handleViewPost(post.id)}>
-                          <Link href={`/job/${post.id}`}>View Profile</Link>
+                        <Button size="sm" asChild onClick={() => handleViewProfile(profile.id)}>
+                          <Link href={`/profile/${profile.id}`}>View Profile</Link>
                         </Button>
                         <Button size="sm" variant="outline" asChild>
-                          <Link href={`/chat?userId=${post.developerId}`}>
+                          <Link href={`/chat?userId=${profile.userId}`}>
                             <MessageSquare className="mr-2 h-4 w-4" />
                             Message
                           </Link>
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleLike(post.id)}>
+                        <Button size="sm" variant="ghost" onClick={() => handleLikeProfile(profile.id)}>
                           <Heart className="h-4 w-4" />
                         </Button>
                       </div>

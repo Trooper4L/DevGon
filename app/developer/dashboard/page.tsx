@@ -16,63 +16,76 @@ export default function DeveloperDashboard() {
   const { user, userProfile, loading: authLoading } = useAuth()
   const router = useRouter()
   const [jobPostings, setJobPostings] = useState<JobPosting[]>([])
-  const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalPosts: 0,
     totalViews: 0,
     totalLikes: 0,
   })
+  // Unified loading state
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) {
+      return // Wait for auth to complete
+    }
+
+    if (!user) {
       router.push("/signin")
+      return
     }
-    if (userProfile?.role !== "developer") {
+
+    // If auth is done, but the profile is not loaded or the role is incorrect
+    if (!userProfile) {
+      setIsLoading(false) // Stop loading and show empty state (or a "create profile" prompt)
+      return
+    }
+
+    if (userProfile.role !== "developer") {
       router.push("/employer/dashboard")
+      return
     }
+
+    // Load data only if we have a valid developer profile
+    const loadJobPostings = async () => {
+      try {
+        const q = query(
+          collection(db, "jobPostings"),
+          where("developerId", "==", user.uid),
+          orderBy("createdAt", "desc"),
+        )
+
+        const querySnapshot = await getDocs(q)
+        const posts: JobPosting[] = []
+        let totalViews = 0
+        let totalLikes = 0
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data() as JobPosting
+          posts.push({ ...data, id: doc.id })
+          totalViews += data.views || 0
+          totalLikes += data.likes || 0
+        })
+
+        setJobPostings(posts)
+        setStats({
+          totalPosts: posts.length,
+          totalViews,
+          totalLikes,
+        })
+      } catch (error) {
+        console.error("Error loading job postings:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadJobPostings()
   }, [user, userProfile, authLoading, router])
 
-  useEffect(() => {
-    if (user) {
-      loadJobPostings()
-    }
-  }, [user])
-
-  const loadJobPostings = async () => {
-    if (!user) return
-
-    try {
-      const q = query(collection(db, "jobPostings"), where("developerId", "==", user.uid), orderBy("createdAt", "desc"))
-
-      const querySnapshot = await getDocs(q)
-      const posts: JobPosting[] = []
-      let totalViews = 0
-      let totalLikes = 0
-
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as JobPosting
-        posts.push({ ...data, id: doc.id })
-        totalViews += data.views || 0
-        totalLikes += data.likes || 0
-      })
-
-      setJobPostings(posts)
-      setStats({
-        totalPosts: posts.length,
-        totalViews,
-        totalLikes,
-      })
-    } catch (error) {
-      console.error("Error loading job postings:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (authLoading || loading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">Loading Dashboard...</div>
       </div>
     )
   }

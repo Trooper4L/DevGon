@@ -9,8 +9,8 @@ export const CONTRACT_ABI = [
 ]
 
 // Polygon Mumbai Testnet
-export const POLYGON_TESTNET_CHAIN_ID = 80001
-export const POLYGON_TESTNET_RPC = "https://rpc-mumbai.maticvigil.com"
+export const POLYGON_TESTNET_CHAIN_ID = 80002
+export const POLYGON_TESTNET_RPC = "https://rpc-amoy.polygon.technology/"
 
 // Contract address - will be set after deployment
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || ""
@@ -57,14 +57,14 @@ export async function switchToPolygonTestnet() {
           params: [
             {
               chainId: `0x${POLYGON_TESTNET_CHAIN_ID.toString(16)}`,
-              chainName: "Polygon Mumbai Testnet",
+              chainName: "Polygon Amoy Testnet",
               nativeCurrency: {
                 name: "MATIC",
                 symbol: "MATIC",
                 decimals: 18,
               },
               rpcUrls: [POLYGON_TESTNET_RPC],
-              blockExplorerUrls: ["https://mumbai.polygonscan.com/"],
+              blockExplorerUrls: ["https://rpc-amoy.polygon.technology/"],
             },
           ],
         })
